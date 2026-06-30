@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dev Toolkit — Base64/Zst, Text↔Base64, JSON Beautifier</title>
+<script src="https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.js"></script>
+<style>
+  :root{
+    --bg:#0f1117;
+    --panel:#171a23;
+    --panel-2:#1d2129;
+    --border:#2a2f3a;
+    --text:#e7e9ee;
+    --muted:#9aa3b2;
+    --accent:#6ea8fe;
+    --accent-2:#7ee3a8;
+    --error:#ff6b6b;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:24px;
+  }
+  h1{
+    font-size:20px;
+    font-weight:600;
+    margin:0 0 4px 0;
+  }
+  .subtitle{
+    color:var(--muted);
+    font-size:13px;
+    margin-bottom:24px;
+  }
+  .tabs{
+    display:flex;
+    gap:6px;
+    margin-bottom:18px;
+    border-bottom:1px solid var(--border);
+  }
+  .tab-btn{
+    background:none;
+    border:none;
+    color:var(--muted);
+    padding:10px 16px;
+    font-size:14px;
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+    font-weight:500;
+  }
+  .tab-btn.active{
+    color:var(--text);
+    border-bottom:2px solid var(--accent);
+  }
+  .tab-btn:hover{ color:var(--text); }
+  .panel{
+    display:none;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:20px;
+  }
+  .panel.active{ display:block; }
+  label{
+    display:block;
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--muted);
+    margin-bottom:6px;
+    margin-top:16px;
+  }
+  label:first-of-type{ margin-top:0; }
+  textarea, input[type=text]{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:13px;
+    padding:12px;
+    resize:vertical;
+  }
+  textarea{ min-height:140px; }
+  textarea:focus, input:focus{
+    outline:none;
+    border-color:var(--accent);
+  }
+  .row{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap:wrap;
+    margin-top:14px;
+  }
+  button{
+    background:var(--accent);
+    color:#0b0d12;
+    border:none;
+    border-radius:7px;
+    padding:9px 16px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  button.secondary{
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--border);
+  }
+  button:hover{ filter:brightness(1.08); }
+  button:active{ transform:translateY(1px); }
+  .file-drop{
+    border:1.5px dashed var(--border);
+    border-radius:8px;
+    padding:18px;
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+    cursor:pointer;
+    margin-top:8px;
+  }
+  .file-drop.dragover{
+    border-color:var(--accent);
+    color:var(--text);
+    background:rgba(110,168,254,0.06);
+  }
+  .status{
+    font-size:12.5px;
+    margin-top:10px;
+    padding:8px 12px;
+    border-radius:6px;
+    display:none;
+  }
+  .status.show{ display:block; }
+  .status.ok{
+    background:rgba(126,227,168,0.1);
+    color:var(--accent-2);
+    border:1px solid rgba(126,227,168,0.25);
+  }
+  .status.err{
+    background:rgba(255,107,107,0.1);
+    color:var(--error);
+    border:1px solid rgba(255,107,107,0.25);
+  }
+  .hint{
+    font-size:12px;
+    color:var(--muted);
+    margin-top:6px;
+  }
+  .meta{
+    font-size:12px;
+    color:var(--muted);
+    margin-top:4px;
+  }
+  .copy-wrap{ position:relative; }
+  .json-error-line{ color:var(--error); font-family:var(--mono); font-size:12.5px; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<h1>Dev Toolkit</h1>
+<div class="subtitle">Base64 → .zst decoder, Text ↔ Base64, and JSON Beautifier — all client-side, nothing leaves your browser.</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="zst">Base64 → .zst Viewer</button>
+  <button class="tab-btn" data-tab="b64">Text ↔ Base64</button>
+  <button class="tab-btn" data-tab="json">JSON Beautifier</button>
+</div>
+
+<!-- BASE64 -> ZST PANEL -->
+<div class="panel active" id="panel-zst">
+  <label for="zst-input">Base64 input (zstd-compressed data)</label>
+  <textarea id="zst-input" placeholder="Paste base64 here, e.g. KLUv/SAFiQAAY..."></textarea>
+
+  <div class="file-drop" id="zst-drop">Or drop a .zst file here / click to browse</div>
+  <input type="file" id="zst-file" accept=".zst" style="display:none">
+
+  <div class="row">
+    <button id="zst-decode-btn">Decode & Decompress</button>
+    <button class="secondary" id="zst-clear-btn">Clear</button>
+    <button class="secondary" id="zst-download-btn" style="display:none">Download decompressed file</button>
+  </div>
+
+  <div class="status" id="zst-status"></div>
+
+  <label for="zst-output" style="margin-top:20px;">Decompressed text output</label>
+  <textarea id="zst-output" readonly style="min-height:220px;"></textarea>
+  <div class="meta" id="zst-meta"></div>
+</div>
+
+<!-- TEXT <-> BASE64 PANEL -->
+<div class="panel" id="panel-b64">
+  <label for="text-input">Plain text</label>
+  <textarea id="text-input" placeholder="Type or paste text here..."></textarea>
+
+  <div class="row">
+    <button id="text-to-b64-btn">Encode → Base64</button>
+    <button class="secondary" id="b64-to-text-btn">Decode ← Base64</button>
+    <button class="secondary" id="b64-clear-btn">Clear</button>
+  </div>
+
+  <div class="status" id="b64-status"></div>
+
+  <label for="b64-output">Base64</label>
+  <textarea id="b64-output" placeholder="Base64 will appear here, or paste base64 and click Decode ← Base64"></textarea>
+  <div class="row">
+    <button class="secondary" id="b64-copy-btn">Copy Base64</button>
+  </div>
+</div>
+
+<!-- JSON BEAUTIFIER PANEL -->
+<div class="panel" id="panel-json">
+  <label for="json-input">Raw / minified JSON</label>
+  <textarea id="json-input" placeholder='{"hello":"world","nested":{"a":1,"b":[1,2,3]}}'></textarea>
+
+  <div class="row">
+    <label style="margin:0; display:inline-flex; align-items:center; gap:6px; text-transform:none; font-size:13px;">
+      Indent:
+      <select id="json-indent" style="background:var(--panel-2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:5px 8px;">
+        <option value="2" selected>2 spaces</option>
+        <option value="4">4 spaces</option>
+        <option value="tab">Tab</option>
+      </select>
+    </label>
+    <button id="json-beautify-btn">Beautify</button>
+    <button class="secondary" id="json-minify-btn">Minify</button>
+    <button class="secondary" id="json-clear-btn">Clear</button>
+    <button class="secondary" id="json-copy-btn">Copy Output</button>
+  </div>
+
+  <div class="status" id="json-status"></div>
+
+  <label for="json-output">Formatted output</label>
+  <textarea id="json-output" readonly style="min-height:260px;"></textarea>
+</div>
+
+<script>
+// ---------- Tabs ----------
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+function showStatus(el, msg, isError){
+  el.textContent = msg;
+  el.className = 'status show ' + (isError ? 'err' : 'ok');
+}
+
+// ---------- Base64 -> .zst decoder ----------
+const zstInput = document.getElementById('zst-input');
+const zstOutput = document.getElementById('zst-output');
+const zstStatus = document.getElementById('zst-status');
+const zstMeta = document.getElementById('zst-meta');
+const zstDrop = document.getElementById('zst-drop');
+const zstFile = document.getElementById('zst-file');
+const zstDownloadBtn = document.getElementById('zst-download-btn');
+let lastDecompressedBytes = null;
+
+function base64ToUint8Array(b64){
+  // strip whitespace/newlines, support base64url too
+  let clean = b64.replace(/\s+/g,'');
+  clean = clean.replace(/-/g,'+').replace(/_/g,'/');
+  while(clean.length % 4 !== 0){ clean += '='; }
+  const binStr = atob(clean);
+  const bytes = new Uint8Array(binStr.length);
+  for(let i=0;i<binStr.length;i++){ bytes[i] = binStr.charCodeAt(i); }
+  return bytes;
+}
+
+function decodeBytesToText(bytes){
+  try{
+    const decoder = new TextDecoder('utf-8', {fatal:false});
+    return decoder.decode(bytes);
+  }catch(e){
+    return Array.from(bytes).map(b=>String.fromCharCode(b)).join('');
+  }
+}
+
+function runZstDecode(bytes){
+  if(typeof fzstd === 'undefined'){
+    showStatus(zstStatus, 'Decompression library failed to load. Check your internet connection.', true);
+    return;
+  }
+  try{
+    const decompressed = fzstd.decompress(bytes);
+    lastDecompressedBytes = decompressed;
+    const text = decodeBytesToText(decompressed);
+    zstOutput.value = text;
+    zstMeta.textContent = `Compressed: ${bytes.length.toLocaleString()} bytes → Decompressed: ${decompressed.length.toLocaleString()} bytes`;
+    zstDownloadBtn.style.display = 'inline-block';
+    showStatus(zstStatus, 'Decoded and decompressed successfully.', false);
+  }catch(e){
+    zstDownloadBtn.style.display = 'none';
+    zstOutput.value = '';
+    zstMeta.textContent = '';
+    showStatus(zstStatus, 'Failed to decompress: ' + e.message + ' (Is this valid zstd-compressed data?)', true);
+  }
+}
+
+document.getElementById('zst-decode-btn').addEventListener('click', ()=>{
+  const raw = zstInput.value.trim();
+  if(!raw){
+    showStatus(zstStatus, 'Please paste base64 data or drop a .zst file first.', true);
+    return;
+  }
+  let bytes;
+  try{
+    bytes = base64ToUint8Array(raw);
+  }catch(e){
+    showStatus(zstStatus, 'Invalid base64 input: ' + e.message, true);
+    return;
+  }
+  runZstDecode(bytes);
+});
+
+document.getElementById('zst-clear-btn').addEventListener('click', ()=>{
+  zstInput.value = '';
+  zstOutput.value = '';
+  zstMeta.textContent = '';
+  zstStatus.className = 'status';
+  zstDownloadBtn.style.display = 'none';
+  lastDecompressedBytes = null;
+});
+
+zstDownloadBtn.addEventListener('click', ()=>{
+  if(!lastDecompressedBytes) return;
+  const blob = new Blob([lastDecompressedBytes], {type:'application/octet-stream'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'decompressed.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+zstDrop.addEventListener('click', ()=> zstFile.click());
+zstDrop.addEventListener('dragover', (e)=>{ e.preventDefault(); zstDrop.classList.add('dragover'); });
+zstDrop.addEventListener('dragleave', ()=> zstDrop.classList.remove('dragover'));
+zstDrop.addEventListener('drop', (e)=>{
+  e.preventDefault();
+  zstDrop.classList.remove('dragover');
+  if(e.dataTransfer.files.length){ handleZstFile(e.dataTransfer.files[0]); }
+});
+zstFile.addEventListener('change', (e)=>{
+  if(e.target.files.length){ handleZstFile(e.target.files[0]); }
+});
+
+function handleZstFile(file){
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const bytes = new Uint8Array(ev.target.result);
+    // also populate the base64 box so user can see/reuse it
+    let binary = '';
+    for(let i=0;i<bytes.length;i++){ binary += String.fromCharCode(bytes[i]); }
+    zstInput.value = btoa(binary);
+    runZstDecode(bytes);
+  };
+  reader.onerror = function(){
+    showStatus(zstStatus, 'Could not read file.', true);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ---------- Text <-> Base64 ----------
+const textInput = document.getElementById('text-input');
+const b64Output = document.getElementById('b64-output');
+const b64Status = document.getElementById('b64-status');
+
+document.getElementById('text-to-b64-btn').addEventListener('click', ()=>{
+  try{
+    const bytes = new TextEncoder().encode(textInput.value);
+    let binary = '';
+    for(let i=0;i<bytes.length;i++){ binary += String.fromCharCode(bytes[i]); }
+    b64Output.value = btoa(binary);
+    showStatus(b64Status, 'Text encoded to Base64.', false);
+  }catch(e){
+    showStatus(b64Status, 'Encoding failed: ' + e.message, true);
+  }
+});
+
+document.getElementById('b64-to-text-btn').addEventListener('click', ()=>{
+  try{
+    const bytes = base64ToUint8Array(b64Output.value.trim());
+    textInput.value = decodeBytesToText(bytes);
+    showStatus(b64Status, 'Base64 decoded to text.', false);
+  }catch(e){
+    showStatus(b64Status, 'Decoding failed: invalid Base64. ' + e.message, true);
+  }
+});
+
+document.getElementById('b64-clear-btn').addEventListener('click', ()=>{
+  textInput.value = '';
+  b64Output.value = '';
+  b64Status.className = 'status';
+});
+
+document.getElementById('b64-copy-btn').addEventListener('click', ()=>{
+  if(!b64Output.value){ return; }
+  navigator.clipboard.writeText(b64Output.value).then(()=>{
+    showStatus(b64Status, 'Copied to clipboard.', false);
+  }).catch(()=>{
+    showStatus(b64Status, 'Could not copy automatically — please copy manually.', true);
+  });
+});
+
+// ---------- JSON Beautifier ----------
+const jsonInput = document.getElementById('json-input');
+const jsonOutput = document.getElementById('json-output');
+const jsonStatus = document.getElementById('json-status');
+const jsonIndentSel = document.getElementById('json-indent');
+
+function getIndent(){
+  const v = jsonIndentSel.value;
+  return v === 'tab' ? '\t' : Number(v);
+}
+
+document.getElementById('json-beautify-btn').addEventListener('click', ()=>{
+  try{
+    const parsed = JSON.parse(jsonInput.value);
+    jsonOutput.value = JSON.stringify(parsed, null, getIndent());
+    showStatus(jsonStatus, 'Valid JSON — beautified.', false);
+  }catch(e){
+    jsonOutput.value = '';
+    showStatus(jsonStatus, 'Invalid JSON: ' + e.message, true);
+  }
+});
+
+document.getElementById('json-minify-btn').addEventListener('click', ()=>{
+  try{
+    const parsed = JSON.parse(jsonInput.value);
+    jsonOutput.value = JSON.stringify(parsed);
+    showStatus(jsonStatus, 'Valid JSON — minified.', false);
+  }catch(e){
+    jsonOutput.value = '';
+    showStatus(jsonStatus, 'Invalid JSON: ' + e.message, true);
+  }
+});
+
+document.getElementById('json-clear-btn').addEventListener('click', ()=>{
+  jsonInput.value = '';
+  jsonOutput.value = '';
+  jsonStatus.className = 'status';
+});
+
+document.getElementById('json-copy-btn').addEventListener('click', ()=>{
+  if(!jsonOutput.value) return;
+  navigator.clipboard.writeText(jsonOutput.value).then(()=>{
+    showStatus(jsonStatus, 'Copied to clipboard.', false);
+  }).catch(()=>{
+    showStatus(jsonStatus, 'Could not copy automatically — please copy manually.', true);
+  });
+});
+</script>
+
+</body>
+</html>
